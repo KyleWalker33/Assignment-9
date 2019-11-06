@@ -1,0 +1,213 @@
+---
+title: "Assignment 9"
+author: "Kyle Walker"
+date: "11/11/2019"
+output: html_document
+---
+
+### Decision Tree on the Titanic data
+
+#### 1. This following codes build a predictive model to predict if a passenger in the titanic is survived or not. A common practice is to split the data into 2 subdata: a train data and a test data.  The model is build from the train data and then tested on the test data.  
+
+```{r}
+library(caret)
+library(dplyr)
+library(tidyverse)
+library(readr)
+library(e1071)
+library(rattle)
+library(rpart)
+titanic <- read_csv(file = "C:/Users/student/Documents/Senior Year/MATH 421/titanic.csv")
+titanic <- na.omit(titanic)
+titanic <- titanic %>% 
+  select(-PassengerId, -Name, -Ticket, -Cabin)
+titanic$Survived <- as.factor(titanic$Survived)
+# Split the data into 70% training and 30% testing
+splitIndex <- createDataPartition(titanic$Survived, p = .70, list = FALSE)
+train <- titanic[splitIndex,]
+test <- titanic[-splitIndex,]
+
+# build a tree
+mytree <- rpart(Survived ~ ., data = train, method = "class")
+
+# Plot the tree
+fancyRpartPlot(mytree)
+
+# Evaluate the tree on the testing data
+
+#predict on testing data
+pred <- predict(mytree,test, type = "class")
+
+#Evaluate the predictions
+cm=confusionMatrix(data = pred, reference = test$Survived, positive = "1")
+cm
+```
+### Following the codes and 
+
+#### - Compute the training error of a decision tree with maxdepth=1
+```{r}
+# Build another tree
+# Tree with depth=1
+library(rpart)
+mytree2 <- rpart(Survived ~ ., data = train, method = "class", control = rpart.control(maxdepth = 1))
+fancyRpartPlot(mytree2)
+
+pred <- predict(mytree2, train, type="class")
+
+cm = confusionMatrix(data = pred, reference = train$Survived, positive = "1")
+1 - cm$overall[[1]]
+```
+
+#### - Compute the training errors of decision trees with `maxdepth` running from 1 to 10.  How does the training error change when the `maxdepth` increases. 
+```{r}
+for(i in 1:10) {
+  mytree2 <- rpart(Survived ~ ., data = train, method = "class", control = rpart.control(maxdepth = i))
+  pred <- predict(mytree2, train, type="class")
+
+  cm = confusionMatrix(data = pred, reference = train$Survived, positive = "1")
+  print(1 - cm$overall[[1]])
+}
+# The training error decreases as the max depth increases
+```
+
+
+#### - Compute the test errors of decision trees with `maxdepth` running from 1 to 10.  How does the test error change when the `maxdepth` increases. 
+```{r}
+for(i in 1:10) {
+  mytree2 <- rpart(Survived ~ ., data = train, method = "class", control = rpart.control(maxdepth = i))
+  pred <- predict(mytree2, test, type="class")
+
+  cm = confusionMatrix(data = pred, reference = test$Survived, positive = "1")
+  print(1 - cm$overall[[1]])
+}
+#As the max depth increases on the testing data, the training error increases
+```
+
+#### - Parameter tuning is the process to find out the best selection for the parameter.  What would be the best selection of the parameter `maxdepth`?
+```{r}
+# The best max depth for this data set would be 1, this achieves the lowest validation error
+```
+
+
+### Random Forest on the Titanic data
+
+#### 2. A random forest is a combination of many trees. The decision of random forest is a majority vote between all the trees. For example, if a forest has 5 trees and three (majority) trees predict a passenger survived, the forest also predict that passenger survived. If only two trees predict survived, the forest would predict the passenger `not survived`.  
+
+#### Also, to decide where to split at each node, a tree in a forest only consider at a random number of variables to decide instead of considering all the variables. 
+
+#### The number of trees and the number of variables considered at each split are two of the most common parameters of random forest.  This following codes implement random forest using the `ranger` package. 
+
+```{r}
+# Building random forest using ranger
+
+# import the ranger library
+library(ranger)
+
+#train a forest of 10 trees and consider a random of 3 variables at each split
+model = ranger(Survived ~., data = train, mtry = 1, num.trees = 10)
+
+# predict and test on the test dataset
+pred3  = predict(model, data = test)$predictions
+
+# Get the confusion matrix
+confusionMatrix(pred3, test$Survived, positive="1")
+```
+
+#### - Compute the training errors of random forest with `mtry` running from 1 to its maximum and `num.trees` running from 1 to 20.  
+```{r}
+errors = c()
+for (i in 1:(length(titanic) - 1)) {
+  for (j in 1:20) {
+    model = ranger(Survived ~., data = train, mtry = i, num.trees = j)
+    
+    pred3  = predict(model, data = train)$predictions
+    
+    cm = confusionMatrix(pred3, train$Survived, positive="1")
+    errors <- append(errors, 1 - cm$overall[[1]], length(errors))
+  }
+}
+array(errors, dim=c(7,20))
+
+```
+
+
+#### - Compute the testing errors of random forest with `mtry` running from 1 to its maximum and `num.trees` running from 1 to 20.  
+```{r}
+errors = c()
+for (i in 1:(length(titanic) - 1)) {
+  for (j in 1:20) {
+    model = ranger(Survived ~., data = train, mtry = i, num.trees = j)
+    
+    pred3  = predict(model, data = test)$predictions
+    
+    cm = confusionMatrix(pred3, test$Survived, positive="1")
+    errors <- append(errors, 1 - cm$overall[[1]], length(errors))
+  }
+}
+array(errors, dim=c(7,20))
+min(errors)
+```
+
+
+#### - What would be the best selection of the parameters `mtry` and `num.trees`?
+```{r}
+# The best selection of parameters mtry and num.trees is: (3,2)
+```
+
+### 3. Implement decision tree and random forest on the `adult` data at [this link](https://www.kaggle.com/uciml/adult-census-income/download) to predict if a person earn more than 50k or not. For a random forest try 5 different values for each of the parameter `mtry`, `min.node.size` and try different values for the parameter `splitrule` then decide the best ones. 
+
+#### Note that:
+
+#### - `splitrule=gini` Gini Index is used to decide the best split at nodes
+#### - `splitrule=extratrees`:  Split is decided randomly with no rules.  This is an idea of the Extreme Randomized Tree (https://link.springer.com/article/10.1007/s10994-006-6226-1) 
+### Prepping Adult Dataset
+```{r}
+adult <- na.omit(read_csv(file = "C:/Users/student/Documents/GitHub/Assignment-9/adult.csv"))
+str(adult)
+adult$income <- as.factor(adult$income)
+splitIndex <- createDataPartition(adult$income, p = .70, list = FALSE)
+train <- adult[ splitIndex,]
+test <- adult[-splitIndex,]
+```
+### Decision Tree
+```{r}
+dt <- rpart(income ~ ., data = train, method = "class", control = rpart.control(maxdepth = 3))
+fancyRpartPlot(dt)
+
+pred <- predict(dt, train, type="class")
+
+cm = confusionMatrix(data = pred, reference = train$income, positive = ">50K")
+1 - cm$overall[[1]]
+```
+
+### Random Forest Tuning mtry and min.node.size
+```{r}
+errors = c()
+for (i in 1:5) {
+  for (j in 1:5) {
+    model = ranger(income ~., data = train, mtry = i, min.node.size = j, splitrule = 'gini')
+    
+    pred4  = predict(model, data = test)$predictions
+    
+    cm = confusionMatrix(pred4, test$income, positive=">50K")
+    errors <- append(errors, 1 - cm$overall[[1]], length(errors))
+  }
+}
+array(errors, dim=c(5,5))
+min(errors)
+```
+
+```{r}
+# The best combination of mtry and min.node.size is (mtry = 2, min.node.size = 3) with splitrule=gini
+```
+
+### Comparing tuned parameters to splitrule = 'extratrees'
+```{r}
+#model = ranger(income ~., data = train, mtry = 2, min.node.size = 3, splitrule = 'extratrees')
+    
+#pred4  = predict(model, data = test)$predictions
+
+#cm = confusionMatrix(pred4, test$income, positive=">50K")
+#1 - cm$overall[[1]]
+```
+
